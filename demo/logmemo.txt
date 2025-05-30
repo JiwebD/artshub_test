@@ -1,0 +1,64 @@
+------------------------------------------------
+1단계 : 프로젝트 생성 및 기본 구조 설정
+------------------------------------------------
+ 의존성, application.properties - server.port=8090  실행 확인
+
+------------------------------------------------
+2단계 : 도메인 및 회원가입 구현
+------------------------------------------------
+Entity, Repository, Dto작성
+UserRestController
+ - /join 구현
+SecurityConfig
+	BCryptPasswordEncoder PasswordEncoder
+	SecurityFilterChain - /join, /login 권한 없이 접근가능
+	filterChain	어떤 요청이 인증이 필요한지 설정하는 부분
+	.csrf().disable()	REST API에서는 CSRF 비활성화하는 것이 일반적
+
+포스트맨으로 
+POST http://localhost:8090/join
+Content-Type: application/json
+
+{
+  "username": "testuser",
+  "password": "1234"
+}
+
+테스트
+
+
+
+---------------------------
+3단계 로그인 구현
+---------------------------
+PrincipalDetails.java
+ 우리가 만든 User 객체를 Spring Security에서 사용할 수 있도록 감싸주는 클래스
+ Spring Security는 로그인 후 내부적으로 이 객체를 기반으로 인증된 사용자 정보를 처리
+
+PrincipalDetailsService
+  Spring Security는 로그인을 처리할 때 내부적으로 
+  UserDetailsService의 loadUserByUsername() 메서드를 호출한다.
+  그래서 우리는 UserDetailsService를 상속해서 커스터마이징 해야함.
+
+---------------------------
+4단계: SecurityConfig 보완
+---------------------------
+AuthenticationManager 등록
+formLogin 생략하고 → /login은 우리가 만든 컨트롤러 또는 필터로 처리 예정
+JWT 전용 필터를 붙일 준비
+
+SecurityConfig
+ AuthenticationManager authenticationManager
+  로그인 시 사용자 검증에 사용되는 핵심 객체
+
+내부 동작 흐름
+1. 사용자가 /login 으로 POST 요청
+2. UsernamePasswordAuthenticationFilter 가 가로챔
+3. SecurityConfig → AuthenticationManager 호출
+4. → PrincipalDetailsService.loadUserByUsername()
+5. → DB에서 사용자 조회 → PrincipalDetails로 반환
+6. → 인증 성공 시 SecurityContext에 사용자 등록
+
+
+
+
