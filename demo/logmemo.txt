@@ -200,3 +200,172 @@ JwtAuthorizationFilter.java
 JwtTokenProvider
 //콘솔 /api/user/me 작동 디버깅  주석 아래코드
 
+ 
+
+---------------------------
+7단계: RefreshToken 발급 및 재발급 구조 추가
+---------------------------
+전체 흐름 요약
+사용자가 로그인하면:
+AccessToken → 쿠키로 전달
+RefreshToken → Redis에 저장 (key: username, value: refreshToken)
+사용자가 인증된 요청을 보낼 때:
+AccessToken이 만료되면 → 프론트가 /api/refresh-token 요청
+서버는 Redis에 저장된 RefreshToken을 검증 → AccessToken 재발급
+
+
+----------
+Step 1: Redis 설정 및 연결 상태 확인
+----------
+의존성
+// Redis
+implementation 'org.springframework.boot:spring-boot-starter-data-redis'
+implementation 'org.springframework.session:spring-session-data-redis'
+
+application.properties 설정
+# Redis 연결 설정
+spring.data.redis.host=localhost
+spring.data.redis.port=6379
+spring.data.redis.timeout=6000
+
+redis 설치
+서비스 수동 실행
+
+Another Redis Desktop Manager 실행 
+
+
+----------
+Step 2: Redis 연동 설정 테스트 (간단한 예)
+----------
+Spring Boot 애플리케이션이 Redis에 정상적으로 연결되는지 확인
+
+
+RedisTestService.java 를 하나 만들어서 간단히 set, get을 테스트해보기.
+RedisTestController.java 테스트용 컨트롤러 작성
+
+테스트 방법
+서버 실행 후 브라우저 또는 Postman에서 다음 경로에 접근:
+ GET http://localhost:8090/redis/set → 데이터 저장됨
+ GET http://localhost:8090/redis/get → 조회 결과: helloRedis
+
+Another Redis Desktop Manager에서
+myKey    helloRedis 확인 됨.
+
+다음 단계
+본격적으로 RefreshToken 저장/조회/삭제 기능 구현
+
+
+----------
+Step 3: RefreshTokenRepository 인터페이스 + 구현 클래스 만들기
+----------
+
+
+RefreshTokenRepository 인터페이스 생성
+RefreshToken 저장/조회/삭제 기능 정의
+
+RefreshTokenRepositoryImpl.java 구현
+Redis를 이용한 RefreshToken 저장소 구현체
+
+
+key는 username이고 value는 refreshToken
+만료 시간은 밀리초 단위로 설정 (TimeUnit.MILLISECONDS)
+@Repository + @RequiredArgsConstructor 조합으로 DI 자동 설정
+
+
+다음 단계
+로그인 시:
+accessToken은 쿠키로
+refreshToken은 Redis에 저장 (위 RefreshTokenRepository 사용)
+다음 단계에서 UserRestController의 /api/login에 refreshToken 저장 코드를 추가.
+
+
+----------
+Step 4: accessToken → 쿠키에 저장 , refreshToken → Redis에 저장
+----------
+UserRestContoller.java 수정
+
+
+AccessToken	JWT 생성 후 HttpOnly 쿠키에 저장
+RefreshToken	JWT 생성 후 Redis에 저장 (username → token)
+TTL 설정	7일간 유효 (밀리초 단위로 전달)
+
+
+다음 단계
+/api/refresh-token API를 만들어서
+AccessToken 만료 시 RefreshToken을 검증하고
+AccessToken을 재발급해주는 구조로 확장
+
+----------
+Step 5: /api/refresh-token API 구현
+----------
+목표
+클라이언트가 요청 시 쿠키 또는 헤더에서 RefreshToken을 전달
+Redis에서 해당 사용자의 RefreshToken이 유효한지 확인
+유효하면 새로운 AccessToken을 생성하고 다시 쿠키에 담아 응답
+
+UserRestController에 /api/refresh-token 추가
+
+JwtTokenProvider에 필요한 메서드 추가
+public String getUsernameFromToken(String token) {
+    return Jwts.parserBuilder()
+            .setSigningKey(getSignKey())
+            .build()
+            .parseClaimsJws(token)
+            .getBody()
+            .getSubject();
+}
+
+public Authentication getAuthentication(String token) {
+    String username = getUsernameFromToken(token);
+    UserDetails userDetails = userDetailsService.loadUserByUsername(username);
+    return new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
+}
+
+
+지금까지 구현한 흐름 정리
+1. 로그인 성공 시 처리
+UserRestController에서 /api/login 요청 처리 시 다음 수행:
+AuthenticationManager를 이용해 로그인 시도
+accessToken 발급 → 쿠키에 저장
+refreshToken 발급 → Redis에 저장 (key = username, value = token)
+콘솔에도 두 토큰 출력됨
+
+2. Redis 저장 확인
+Another Redis Desktop Manager로 redis 접속 시,
+**키 목록에 username 값(testuser)**이 있고, 해당 값은 refreshToken임을 확인함.
+
+
+----------
+Step 6: Postman 테스트 및 Redis 직접 확인
+----------
+Postman 테스트
+POST http://localhost:8090/api/login
+요청 바디:json
+{
+  "username": "testuser",
+  "password": "1234"
+}
+응답:
+"로그인 성공" 메시지
+콘솔에 accessToken / refreshToken 출력
+accessToken은 브라우저 쿠키로 저장됨
+
+Redis 직접 확인 방법
+로그인 성공 후:
+Redis 관리 툴에서 key = testuser 검색
+value가 refreshToken인지 확인
+
+
+Postman으로 전체 흐름 테스트
+로그인 → 토큰 확인 → Redis 확인 → /api/user/me 요청 → /api/refresh-token으로 accessToken 재발급
+
+React 연동
+axios로 로그인 요청 → 쿠키 저장 확인
+
+이후 인증된 페이지 접근 또는 Refresh 흐름 연동
+
+
+
+----------------------------
+리액트 연동
+----------------------------
