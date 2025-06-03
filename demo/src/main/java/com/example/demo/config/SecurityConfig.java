@@ -42,6 +42,8 @@ public class SecurityConfig {
                                 "/login",
                                 "/login.html",
                                 "/api/login",
+                                "/redis/set",
+                                "/redis/get",
                                 "/css/**", "/js/**", "/images/**"
                         ).permitAll()
                         .anyRequest().authenticated()

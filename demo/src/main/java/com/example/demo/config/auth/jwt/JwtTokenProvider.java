@@ -48,6 +48,21 @@ public class JwtTokenProvider {
                 .compact();    // 최종 문자열로 변환
     }
 
+    // RefreshToken 생성 (7일 유효)
+    public String generateRefreshToken(Authentication authentication) {
+        String username = authentication.getName();
+        Date now = new Date();
+        Date expiry = new Date(now.getTime() + 1000 * 60 * 60 * 24 * 7); // 7일
+
+        return Jwts.builder()
+                .setSubject("RefreshToken")
+                .claim("username", username)
+                .setIssuedAt(now)
+                .setExpiration(expiry)
+                .signWith(key, SignatureAlgorithm.HS256)
+                .compact();
+    }
+
     /**
      * 토큰이 유효한지 검사
      * @param token 전달받은 JWT 토큰
@@ -76,7 +91,7 @@ public class JwtTokenProvider {
                 .build()
                 .parseClaimsJws(token) // 토큰 파싱
                 .getBody()             // 페이로드(body) 부분
-                .get("username", String.class); // username 클레임 추출
+                .getSubject(); // 표준 클레임 'sub'에 저장된 username 반환
     }
 
 
